@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>startingofgame - Phone Video Interaction</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      user-select: none;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #000;
+      font-family: 'Courier New', Courier, monospace;
+    }
+
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+
+    /* Cinematic Film Grain & Vignette Overlay */
+    .vhs-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 10;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.01), rgba(0, 255, 0, 0.005), rgba(0, 0, 255, 0.01));
+      background-size: 100% 3px, 6px 100%;
+      box-shadow: inset 0 0 100px rgba(0,0,0,0.6);
+    }
+
+    /* Start / Click Prompt */
+    #start-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(15, 20, 25, 0.95);
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: #e0e0e0;
+      cursor: pointer;
+      text-align: center;
+      padding: 20px;
+    }
+
+    #start-overlay h1 {
+      font-size: 42px;
+      letter-spacing: 6px;
+      color: #d9822b;
+      margin-bottom: 12px;
+      text-shadow: 0 0 15px rgba(217, 130, 43, 0.5);
+    }
+
+    #start-overlay p {
+      font-size: 16px;
+      letter-spacing: 2px;
+      color: #aaa;
+      margin-top: 8px;
+    }
+
+    /* HUD elements */
+    #crosshair {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 4px;
+      height: 4px;
+      background-color: rgba(255, 255, 255, 0.4);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 12;
+    }
+
+    /* Interaction Prompt HUD */
+    #interaction-prompt {
+      position: fixed;
+      top: 56%;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      background: rgba(0, 0, 0, 0.75);
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 14px;
+      letter-spacing: 2px;
+      display: none;
+      z-index: 15;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+
+    /* White Flash Overlay */
+    #flash-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #ffffff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 50;
+      transition: opacity 0.15s ease-out;
+    }
+
+    /* Fullscreen Video Overlay */
+    #video-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+      z-index: 40;
+      display: none;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #video-overlay video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    #close-video {
+      position: absolute;
+      top: 20px;
+      right: 30px;
+      color: #fff;
+      font-size: 18px;
+      background: rgba(255,255,255,0.2);
+      border: none;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-family: 'Courier New', Courier, monospace;
+      letter-spacing: 2px;
+      border-radius: 4px;
+      z-index: 45;
+    }
+
+    #close-video:hover {
+      background: rgba(255,255,255,0.4);
+    }
+  </style>
+
+  <!-- Three.js Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+  <div class="vhs-overlay"></div>
+  <div id="crosshair"></div>
+  <div id="interaction-prompt">[E] PICK UP PHONE</div>
+  <div id="flash-overlay"></div>
+
+  <!-- Fullscreen Video Overlay -->
+  <div id="video-overlay">
+    <button id="close-video">SKIP / CLOSE</button>
+    <video id="story-video" src="pinaasa.mp4" playsinline></video>
+  </div>
+
+  <div id="start-overlay">
+    <h1>EARLY MORNING MIST</h1>
+    <p>CLICK ANYWHERE TO START</p>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. SCENE SETUP & EARLY MORNING ATMOSPHERE
+    // ==========================================
+    const container = document.getElementById('canvas-container');
+    const startOverlay = document.getElementById('start-overlay');
+    const interactionPrompt = document.getElementById('interaction-prompt');
+    const flashOverlay = document.getElementById('flash-overlay');
+    const videoOverlay = document.getElementById('video-overlay');
+    const storyVideo = document.getElementById('story-video');
+    const closeVideoBtn = document.getElementById('close-video');
+
+    const scene = new THREE.Scene();
+    const dawnSkyColor = new THREE.Color(0x8da4bc);
+    scene.background = dawnSkyColor;
+    scene.fog = new THREE.FogExp2(0xa3b5c6, 0.028);
+
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 100);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    container.appendChild(renderer.domElement);
+
+    const ambientLight = new THREE.AmbientLight(0xd1dfef, 0.65);
+    scene.add(ambientLight);
+
+    const sunLight = new THREE.DirectionalLight(0xffeedd, 1.2);
+    sunLight.position.set(-40, 25, -40);
+    sunLight.castShadow = true;
+    scene.add(sunLight);
+
+    // ==========================================
+    // 2. PROCEDURAL CLOUDS IN THE SKY
+    // ==========================================
+    const cloudGroup = new THREE.Group();
+    const cloudGeo = new THREE.BoxGeometry(12, 3, 6);
+    const cloudMat = new THREE.MeshBasicMaterial({
+      color: 0xdfecfa,
+      transparent: true,
+      opacity: 0.65
+    });
+
+    for (let i = 0; i < 25; i++) {
+      const cloud = new THREE.Mesh(cloudGeo, cloudMat);
+      cloud.position.set(
+        (Math.random() - 0.5) * 200,
+        35 + Math.random() * 15,
+        (Math.random() - 0.5) * 200
+      );
+      cloud.scale.set(1 + Math.random() * 2, 0.6 + Math.random() * 0.8, 1 + Math.random() * 2);
+      cloudGroup.add(cloud);
+    }
+    scene.add(cloudGroup);
+
+    // ==========================================
+    // 3. FLAT WORLD (EARTHY GROUND)
+    // ==========================================
+    const groundGeo = new THREE.PlaneGeometry(300, 300, 32, 32);
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x2b382c,
+      roughness: 0.95,
+      metalness: 0.05
+    });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // ==========================================
+    // 4. WOODEN TABLE & PHONE PROP
+    // ==========================================
+    const propGroup = new THREE.Group();
+
+    // Table Top
+    const tableTopGeo = new THREE.BoxGeometry(1.6, 0.1, 0.9);
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a3319, roughness: 0.8 });
+    const tableTop = new THREE.Mesh(tableTopGeo, woodMat);
+    tableTop.position.set(0, 0.9, -3);
+    tableTop.castShadow = true;
+    propGroup.add(tableTop);
+
+    // Table Legs
+    const legGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.9);
+    const leg1 = new THREE.Mesh(legGeo, woodMat);
+    leg1.position.set(-0.7, 0.45, -2.6);
+    propGroup.add(leg1);
+    const leg2 = new THREE.Mesh(legGeo, woodMat);
+    leg2.position.set(0.7, 0.45, -2.6);
+    propGroup.add(leg2);
+    const leg3 = new THREE.Mesh(legGeo, woodMat);
+    leg3.position.set(-0.7, 0.45, -3.4);
+    propGroup.add(leg3);
+    const leg4 = new THREE.Mesh(legGeo, woodMat);
+    leg4.position.set(0.7, 0.45, -3.4);
+    propGroup.add(leg4);
+
+    // Phone Mesh on Table
+    const phoneGeo = new THREE.BoxGeometry(0.25, 0.04, 0.45);
+    const phoneMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8, roughness: 0.2 });
+    const phoneMesh = new THREE.Mesh(phoneGeo, phoneMat);
+    phoneMesh.position.set(0, 0.97, -3);
+    phoneMesh.castShadow = true;
+    propGroup.add(phoneMesh);
+
+    scene.add(propGroup);
+
+    // ==========================================
+    // 5. PLAYER & WALKING LOGIC
+    // ==========================================
+    const player = {
+      position: new THREE.Vector3(0, 1.65, 0),
+      yaw: 0,
+      pitch: 0,
+      speed: 3.2,
+      isWalking: false,
+      bobTimer: 0
+    };
+
+    const bobFrequency = 9.0;
+    const bobAmountY = 0.06;
+    const bobAmountX = 0.035;
+    const swayAmountZ = 0.02;
+
+    const keys = {};
+    let isPlayingVideo = false;
+
+    window.addEventListener('keydown', (e) => {
+      keys[e.code] = true;
+      if (e.code === 'KeyE' && !isPlayingVideo) {
+        checkPhoneInteraction();
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
+
+    window.addEventListener('blur', () => {
+      for (let k in keys) keys[k] = false;
+    });
+
+    let isPointerLocked = false;
+
+    startOverlay.addEventListener('click', () => {
+      if (!isPlayingVideo) {
+        document.body.requestPointerLock();
+      }
+      initAudio();
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+      isPointerLocked = document.pointerLockElement === document.body;
+      if (!isPlayingVideo) {
+        startOverlay.style.display = isPointerLocked ? 'none' : 'flex';
+      }
+      if (!isPointerLocked) {
+        for (let k in keys) keys[k] = false;
+      }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isPointerLocked || isPlayingVideo) return;
+
+      const sensitivity = 0.0022;
+      player.yaw -= e.movementX * sensitivity;
+      player.pitch -= e.movementY * sensitivity;
+      player.pitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, player.pitch));
+    });
+
+    // ==========================================
+    // 6. PHONE INTERACTION & VIDEO TRIGGER
+    // ==========================================
+    function checkPhoneInteraction() {
+      // Check distance from player to phone (0, 0, -3)
+      const phonePos = new THREE.Vector3(0, 0.97, -3);
+      const dist = player.position.distanceTo(phonePos);
+
+      if (dist < 3.0) {
+        triggerPhonePickup();
+      }
+    }
+
+    function triggerPhonePickup() {
+      isPlayingVideo = true;
+
+      // Exit Pointer Lock so mouse is free for video controls / cursor
+      if (document.pointerLockElement) {
+        document.exitPointerLock();
+      }
+      startOverlay.style.display = 'none';
+      interactionPrompt.style.display = 'none';
+
+      // Play Pickup Sound & Flash
+      playPickupChime();
+      flashOverlay.style.opacity = '1';
+
+      setTimeout(() => {
+        flashOverlay.style.opacity = '0';
+        // Open Fullscreen Video
+        videoOverlay.style.display = 'flex';
+        storyVideo.currentTime = 0;
+        storyVideo.play().catch(err => console.log("Video autoplay prevented:", err));
+      }, 200);
+    }
+
+    closeVideoBtn.addEventListener('click', closeVideoPlayback);
+    storyVideo.addEventListener('ended', closeVideoPlayback);
+
+    function closeVideoPlayback() {
+      storyVideo.pause();
+      videoOverlay.style.display = 'none';
+      isPlayingVideo = false;
+
+      // Re-engage pointer lock & gameplay
+      document.body.requestPointerLock();
+    }
+
+    // ==========================================
+    // 7. AUDIO ENGINE
+    // ==========================================
+    let audioCtx = null;
+    let footstepTimer = 0;
+
+    function initAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    function playPickupChime() {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+      osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); // E5
+      osc.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.2); // G5
+
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.6);
+    }
+
+    function playFootstepSound() {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(110, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(35, audioCtx.currentTime + 0.08);
+
+      gain.gain.setValueAtTime(0.06, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.08);
+    }
+
+    // ==========================================
+    // 8. MAIN GAME LOOP
+    // ==========================================
+    let clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const delta = Math.min(clock.getDelta(), 0.1);
+
+      if (!isPlayingVideo && isPointerLocked) {
+        let moveForward = 0;
+        let moveRight = 0;
+
+        if (keys['KeyW'] || keys['ArrowUp']) moveForward += 1;
+        if (keys['KeyS'] || keys['ArrowDown']) moveForward -= 1;
+        if (keys['KeyD'] || keys['ArrowRight']) moveRight += 1;
+        if (keys['KeyA'] || keys['ArrowLeft']) moveRight -= 1;
+
+        player.isWalking = (moveForward !== 0 || moveRight !== 0);
+
+        if (player.isWalking) {
+          const forwardX = Math.sin(player.yaw);
+          const forwardZ = Math.cos(player.yaw);
+          const rightX = Math.sin(player.yaw - Math.PI / 2);
+          const rightZ = Math.cos(player.yaw - Math.PI / 2);
+
+          let dirX = forwardX * moveForward + rightX * moveRight;
+          let dirZ = forwardZ * moveForward + rightZ * moveRight;
+
+          const len = Math.sqrt(dirX * dirX + dirZ * dirZ);
+          if (len > 0) {
+            dirX /= len;
+            dirZ /= len;
+          }
+
+          player.position.x += dirX * player.speed * delta;
+          player.position.z += dirZ * player.speed * delta;
+
+          player.bobTimer += delta * bobFrequency;
+
+          footstepTimer += delta * bobFrequency;
+          if (footstepTimer >= Math.PI) {
+            playFootstepSound();
+            footstepTimer = 0;
+          }
+        } else {
+          player.bobTimer = THREE.MathUtils.lerp(player.bobTimer, Math.round(player.bobTimer / Math.PI) * Math.PI, delta * 5);
+          footstepTimer = 0;
+        }
+
+        const bobOffsetX = Math.cos(player.bobTimer * 0.5) * bobAmountX;
+        const bobOffsetY = Math.abs(Math.sin(player.bobTimer)) * bobAmountY;
+        const bobTiltZ = Math.sin(player.bobTimer * 0.5) * swayAmountZ;
+
+        camera.position.x = player.position.x + bobOffsetX;
+        camera.position.y = player.position.y + bobOffsetY;
+        camera.position.z = player.position.z;
+
+        const lookTarget = new THREE.Vector3(
+          camera.position.x + Math.sin(player.yaw) * Math.cos(player.pitch),
+          camera.position.y + Math.sin(player.pitch),
+          camera.position.z + Math.cos(player.yaw) * Math.cos(player.pitch)
+        );
+
+        camera.lookAt(lookTarget);
+        camera.rotation.z += bobTiltZ;
+
+        // Check proximity to phone for HUD prompt
+        const phonePos = new THREE.Vector3(0, 0.97, -3);
+        const dist = player.position.distanceTo(phonePos);
+        if (dist < 3.0) {
+          interactionPrompt.style.display = 'block';
+        } else {
+          interactionPrompt.style.display = 'none';
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
